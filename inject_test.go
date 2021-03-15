@@ -2,7 +2,7 @@ package inject_test
 
 import (
 	"fmt"
-	"github.com/codegangsta/inject"
+	"github.com/tech10/inject"
 	"reflect"
 	"testing"
 )
