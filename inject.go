@@ -4,11 +4,13 @@ package inject
 import (
 	"fmt"
 	"reflect"
+	"sync"
 )
 
-const(
+const (
 	MAXPARANUMS uint8 = 10
 )
+
 // Injector represents an interface for mapping and injecting dependencies into structs
 // and function arguments.
 type Injector interface {
@@ -58,8 +60,9 @@ type TypeMapper interface {
 
 type injector struct {
 	values map[reflect.Type][]reflect.Value
-	index map[reflect.Type]uint8
+	index  map[reflect.Type]uint8
 	parent Injector
+	lock   sync.Mutex
 }
 
 // InterfaceOf dereferences a pointer to an Interface type.
@@ -82,7 +85,8 @@ func InterfaceOf(value interface{}) reflect.Type {
 func New() Injector {
 	return &injector{
 		values: make(map[reflect.Type][]reflect.Value),
-		index: make(map[reflect.Type]uint8),
+		index:  make(map[reflect.Type]uint8),
+		lock:   sync.Mutex{},
 	}
 }
 
@@ -159,15 +163,19 @@ func (i *injector) MapTo(val interface{}, ifacePtr interface{}) TypeMapper {
 // Maps the given reflect.Type to the given reflect.Value and returns
 // the Typemapper the mapping has been registered in.
 func (i *injector) Set(typ reflect.Type, val reflect.Value) TypeMapper {
-	if _,ok:=i.index[typ];!ok{
+	defer i.lock.Unlock()
+	i.lock.Lock()
+	if _, ok := i.index[typ]; !ok {
 		i.index[typ] = 0
-		i.values[typ] = make([]reflect.Value,0)
+		i.values[typ] = make([]reflect.Value, 0)
 	}
-	i.values[typ] = append(i.values[typ],val)
+	i.values[typ] = append(i.values[typ], val)
 	return i
 }
 
 func (i *injector) Get(t reflect.Type) reflect.Value {
+	defer i.lock.Unlock()
+	i.lock.Lock()
 	var val reflect.Value
 	if i.values[t] != nil {
 		val = i.values[t][i.index[t]]
@@ -176,14 +184,13 @@ func (i *injector) Get(t reflect.Type) reflect.Value {
 			return val
 		}
 	}
-
 	// no concrete types found, try to find implementors
 	// if t is an interface
 	if t.Kind() == reflect.Interface {
 		for k, v := range i.values {
 			if k.Implements(t) {
 				val = v[i.index[t]]
-				fmt.Println(k,val)
+				fmt.Println(k, val)
 				break
 			}
 		}
@@ -201,8 +208,8 @@ func (i *injector) SetParent(parent Injector) {
 	i.parent = parent
 }
 
-func (i *injector) Reset(){
-	for k,_:=range i.index{
+func (i *injector) Reset() {
+	for k, _ := range i.index {
 		i.index[k] = 0
 	}
 }
